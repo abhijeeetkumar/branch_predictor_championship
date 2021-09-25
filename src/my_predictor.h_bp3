@@ -1,0 +1,60 @@
+//Predictor 3 - Yale Patt
+
+class my_update : public branch_update {
+	public:
+        	unsigned int HT_index;
+		unsigned int PT_index;
+};
+
+class my_predictor : public branch_predictor {
+	public:
+		#define HISTORY_LENGTH 8
+		#define INDEX_LENGTH 9
+		#define INDEX_SIZE 512  //2^INDEX_LENGTH
+		#define MAX_COUNTER 3
+
+		my_update u;
+		branch_info bi;
+
+		int BHT[INDEX_SIZE];
+                int BPT[INDEX_SIZE];
+
+		my_predictor(void){
+			memset(BHT, 0, sizeof(BHT));
+			memset(BPT, 0, sizeof(BPT));
+		}
+
+		branch_update* predict(branch_info &b){
+			bi = b;
+			if(b.br_flags & BR_CONDITIONAL) {
+				u.HT_index = (b.address & ((1<<INDEX_LENGTH)-1));
+				u.PT_index = BHT[u.HT_index];
+
+				u.direction_prediction((BPT[u.PT_index] >= ((MAX_COUNTER + 1)/2) ? 1: 0));
+			}else{
+				u.direction_prediction(true);
+			}
+
+			u.target_prediction(0);
+			return &u;
+		}
+		
+
+		void update(branch_update *u, bool taken, unsigned int target){
+                        if(bi.br_flags & BR_CONDITIONAL){
+				unsigned int PT_index = ((my_update*)u)->PT_index;
+				unsigned int HT_index = ((my_update*)u)->HT_index;
+
+				if (taken && (BPT[PT_index] < MAX_COUNTER))
+					BPT[PT_index]++;
+				else if (!taken && (BPT[PT_index] > 0))
+					BPT[PT_index]--;
+
+				BHT[HT_index] <<= 1;
+				BHT[HT_index] |= taken;
+				BHT[HT_index] &= (1<<HISTORY_LENGTH) - 1;
+			}
+
+		}
+
+};

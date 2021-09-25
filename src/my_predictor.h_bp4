@@ -1,0 +1,94 @@
+//Predictor 4- Hybrid
+
+class my_update : public branch_update {
+        public:
+		unsigned int CT_index;
+                unsigned int BPT_index;
+                unsigned int gshare_index;
+
+		bool result_gshare;
+		bool result_bimodal;
+};
+
+class my_predictor : public branch_predictor {
+        public:
+                #define HISTORY_LENGTH 8
+                #define INDEX_LENGTH 15
+                #define INDEX_SIZE 32768  //2^INDEX_LENGTH
+                #define MAX_COUNTER 3
+
+                my_update u;
+                branch_info bi;
+
+		int BCT[INDEX_SIZE]; //Chooser table, bimodal predictor table, gshare predictor table
+	       	int BPT[INDEX_SIZE]; //can be of different size. 
+		unsigned int history;
+		int gshare_PT[INDEX_SIZE];
+
+                my_predictor(void): history(0){
+			memset(BCT, 0, sizeof(BCT));
+                        memset(BPT, 0, sizeof(BPT));
+                        memset(gshare_PT, 0, sizeof(gshare_PT));
+                }
+
+		branch_update *predict (branch_info & b) {
+			bi =b;
+			if (b.br_flags & BR_CONDITIONAL) {
+				u.CT_index = (b.address & ((1<<INDEX_LENGTH)-1));
+				u.BPT_index = (b.address & ((1<<INDEX_LENGTH)-1));
+				u.gshare_index = (history << (INDEX_LENGTH - HISTORY_LENGTH)) ^ (b.address & ((1<<INDEX_LENGTH)-1));
+				u.result_gshare =  gshare_PT[u.gshare_index] >> 1;
+				u.result_bimodal = (BPT[u.BPT_index] >= ((MAX_COUNTER + 1)/2) ? 1: 0);
+				if((BCT[u.CT_index] >= ((MAX_COUNTER + 1)/2))){
+					//gshare
+					u.direction_prediction(u.result_gshare);
+				}else{
+					//bimodal
+					u.direction_prediction(u.result_bimodal);
+				}
+			}else{
+				u.direction_prediction(true);
+			}
+
+			u.target_prediction(0);
+			return &u;	
+		}
+
+		void update(branch_update *u, bool taken, unsigned int target){
+			if (bi.br_flags & BR_CONDITIONAL) { 
+                                if((BCT[((my_update *)u)->CT_index] >= ((MAX_COUNTER + 1)/2))){
+                                        //gshare
+                                        int *c = &gshare_PT[((my_update*)u)->gshare_index];
+					if(taken){
+						if (*c < 3) (*c)++;
+					}else{
+						if (*c > 0) (*c)--;
+					}
+
+					history <<=1;
+					history |= taken;
+					history &= (1<<HISTORY_LENGTH)-1;
+                                }else{
+                                        //bimodal
+					unsigned int index = ((my_update*)u)->BPT_index;
+                                        if (taken && (BPT[index] < MAX_COUNTER))
+	                                       BPT[index]++;
+        	                       else if(!taken && (BPT[index] > 0))
+                	                       BPT[index]--;
+				}
+
+				if(taken == (((my_update*)u)->result_gshare) && taken == (((my_update*)u)->result_bimodal))
+					return;
+                                if(taken != (((my_update*)u)->result_gshare) && taken != (((my_update*)u)->result_bimodal))
+                                        return;
+
+				if(taken == (((my_update*)u)->result_gshare)){
+					if((BCT[((my_update *)u)->CT_index] >= 0 ) && (BCT[((my_update *)u)->CT_index]< MAX_COUNTER))
+						BCT[((my_update *)u)->CT_index]++;
+				}else{
+                                        if((BCT[((my_update *)u)->CT_index] > 0) && (BCT[((my_update *)u)->CT_index] >= MAX_COUNTER))
+                                                BCT[((my_update *)u)->CT_index]--;
+				}
+			}
+		}
+};

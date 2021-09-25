@@ -1,0 +1,46 @@
+//Predictor 2 - Bimodal
+
+class my_update: public branch_update {
+	public:
+		unsigned int index;
+
+};
+
+
+class my_predictor : public branch_predictor {
+	public:
+		#define BIMODAL_TABLE_SIZE 32768 //2^index_length
+		#define BIMODAL_PRIME 32765 //(2^index_length) - 3		
+		#define MAX_COUNTER 3
+
+		my_update u;
+		branch_info bi;
+		int bimodal_table[BIMODAL_TABLE_SIZE];
+
+		my_predictor (void) {
+			memset(bimodal_table, 0, sizeof(bimodal_table));
+		}
+
+		branch_update * predict(branch_info &b) {
+			bi = b;
+			if(b.br_flags & BR_CONDITIONAL) {
+				u.index = b.address % BIMODAL_PRIME;
+				u.direction_prediction(
+					(bimodal_table[u.index] >= ((MAX_COUNTER + 1)/2)) ? 1 : 0);
+			}else{
+				u.direction_prediction(true);
+			}
+			u.target_prediction(0);
+			return &u;
+		}
+
+		void update(branch_update *u, bool taken, unsigned int target){
+			if(bi.br_flags & BR_CONDITIONAL){
+			       unsigned int index = ((my_update*)u)->index;
+			       if (taken && (bimodal_table[index] < MAX_COUNTER))
+				       bimodal_table[index]++;
+			       else if(!taken && (bimodal_table[index] > 0))
+				       bimodal_table[index]--; 
+			}
+		}
+};
